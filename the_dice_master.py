@@ -10,6 +10,8 @@ from random import randint
 import os
 import glob
 import json
+import sqlite3
+from pathlib import Path
 
 # ===============================================================
 
@@ -24,6 +26,40 @@ intents.message_content = True
 bot = commands.Bot(
     config["BOT"]["Prefix"], intents=intents
 )  # The config['BOT']['Prefix'] defines the bot command prefix
+
+# INIT SQL DATABASE ==============================================
+def initialize_system_database() -> None:
+    """
+    Validates the existence of the SQLite binary file. If absent, it constructs
+    the database dynamically by reading and executing the DDL instructions 
+    from the initialization script.
+    """
+    # Defining the structural paths using the modern pathlib module
+    base_directory = Path("data")
+    binary_db_path = base_directory / "database.db"
+    sql_schema_path = base_directory / "init.sql"
+
+    # Step 1: Guarantee the directory topology exists before any file operation
+    base_directory.mkdir(parents=True, exist_ok=True)
+
+    # Step 2: Validate the existence of the binary database file
+    if not binary_db_path.exists():
+        
+        # It is a fatal architectural error if the schema script is also missing
+        if not sql_schema_path.exists():
+            raise FileNotFoundError(
+                f"Initialization aborted: The required DDL script '{sql_schema_path}' "
+                "is missing from the filesystem."
+            )
+        
+        # Step 3: Read the schema instructions and instantiate the database
+        with open(sql_schema_path, 'r', encoding='utf-8') as schema_file:
+            schema_instructions = schema_file.read()
+
+        with sqlite3.connect(binary_db_path) as connection:
+            cursor = connection.cursor()
+            cursor.executescript(schema_instructions)
+            connection.commit()
 
 # USEFUL FUNCTIONS =============================================================================================================
 def sheet_data_extractor(dados: dict, path: list): 
@@ -1225,4 +1261,5 @@ async def player_sheet(interact: discord.Interaction, player:str, ephemeral:str)
     await interact.response.send_message(embed=player_embed,ephemeral=is_ephemeral)
 
 # Run the Bot
+initialize_system_database()
 bot.run(config["BOT"]["Token"])
